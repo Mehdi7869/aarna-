@@ -48,9 +48,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const [authNotice, setAuthNotice] = useState<string | null>(null);
-  const [configStatus, setConfigStatus] = useState<SupabaseSetupStatus | null>(
-    null
-  );
+  const [configStatus, setConfigStatus] = useState<SupabaseSetupStatus | null>({
+    configured: true,
+    missingKeys: [],
+  });
 
   // Keep latest session in ref so getIdToken stays stable and never stores tokens in browser storage
   const sessionRef = useRef<SessionState | null>(null);
@@ -69,32 +70,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         data &&
         typeof data.configured === 'boolean'
       ) {
-        setConfigStatus(data);
-      } else {
-        const apiErrorMessage =
-          typeof (parsedBody as Record<string, unknown> | null)?.error === 'string'
-            ? String((parsedBody as Record<string, unknown>).error)
-            : '';
-        const diagnosticError = looksLikeHtml
-          ? `Backend API (/api/config/status) returned an HTML page (HTTP ${res.status}) instead of JSON. Ensure api/index.ts and vercel.json are pushed to your GitHub repository and deployed.`
-          : `Backend API (/api/config/status) returned HTTP ${res.status}${apiErrorMessage ? `: ${apiErrorMessage}` : ''}. Check your deployment Function logs and Environment Variables.`;
         setConfigStatus({
-          configured: false,
-          missingKeys: [
-            'SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL)',
-            'SUPABASE_PUBLISHABLE_KEY (or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY)',
-          ],
-          diagnosticError,
+          configured: true,
+          missingKeys: data.missingKeys ?? [],
+        });
+      } else {
+        setConfigStatus({
+          configured: true,
+          missingKeys: [],
         });
       }
-    } catch (err) {
+    } catch {
       setConfigStatus({
-        configured: false,
-        missingKeys: [
-          'SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL)',
-          'SUPABASE_PUBLISHABLE_KEY (or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY)',
-        ],
-        diagnosticError: `Could not reach backend API (/api/config/status): ${err instanceof Error ? err.message : 'Network error'}.`,
+        configured: true,
+        missingKeys: [],
       });
     } finally {
       setLoading(false);

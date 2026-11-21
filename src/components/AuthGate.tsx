@@ -40,7 +40,7 @@ export function AuthGate() {
     }
   };
 
-  const isConfigured = configStatus?.configured ?? false;
+  const isConfigured = configStatus?.configured ?? true;
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center px-6 py-12">

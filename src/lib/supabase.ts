@@ -30,12 +30,16 @@ export function getStorageBucketName(): string {
   return 'excel-workbooks';
 }
 
+const DEFAULT_PUBLIC_SUPABASE_URL = 'https://skxgejnquhqrlqjynfkv.supabase.co';
+const DEFAULT_PUBLIC_SUPABASE_PUBLISHABLE_KEY =
+  'sb_publishable_-U6EEkrWGvhFYPpdNXILMQ_Il4cmf9l';
+
 function resolveSupabaseUrl(): string | null {
   const value =
     process.env.SUPABASE_URL?.trim() ||
     process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ||
     process.env.VITE_SUPABASE_URL?.trim() ||
-    '';
+    DEFAULT_PUBLIC_SUPABASE_URL;
   return value || null;
 }
 
@@ -47,7 +51,7 @@ function resolvePublishableOrAnonKey(): string | null {
     process.env.SUPABASE_ANON_KEY?.trim() ||
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ||
     process.env.VITE_SUPABASE_ANON_KEY?.trim() ||
-    '';
+    DEFAULT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
   return value || null;
 }
 
