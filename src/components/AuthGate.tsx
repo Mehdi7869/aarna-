@@ -99,10 +99,26 @@ export function AuthGate() {
                 </h2>
               </div>
               <p className="mt-2 text-sm text-slate-600 leading-relaxed">
-                Add your Supabase project credentials in the AI Studio{' '}
-                <strong className="font-semibold text-slate-900">Secrets</strong>{' '}
-                panel so keys remain securely on the server:
+                Add your Supabase project credentials in{' '}
+                <strong className="font-semibold text-slate-900">
+                  Vercel Environment Variables
+                </strong>{' '}
+                (Project Settings → Environment Variables, then{' '}
+                <strong className="font-semibold text-slate-900">Redeploy</strong>) or the
+                AI Studio{' '}
+                <strong className="font-semibold text-slate-900">Secrets</strong> panel so
+                keys remain securely on the server:
               </p>
+
+              {configStatus?.diagnosticError && (
+                <div
+                  role="alert"
+                  className="mt-4 p-3.5 rounded-lg border border-amber-200 bg-amber-50 text-xs text-amber-900 leading-relaxed"
+                >
+                  <strong className="font-semibold">API Check Detail: </strong>
+                  {configStatus.diagnosticError}
+                </div>
+              )}
 
               <ul className="mt-4 space-y-2 border border-slate-200 rounded-lg p-4 bg-slate-50 text-xs font-mono text-slate-800">
                 {(

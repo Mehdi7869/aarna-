@@ -34,6 +34,7 @@ function resolveSupabaseUrl(): string | null {
   const value =
     process.env.SUPABASE_URL?.trim() ||
     process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ||
+    process.env.VITE_SUPABASE_URL?.trim() ||
     '';
   return value || null;
 }
@@ -42,8 +43,10 @@ function resolvePublishableOrAnonKey(): string | null {
   const value =
     process.env.SUPABASE_PUBLISHABLE_KEY?.trim() ||
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim() ||
+    process.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim() ||
     process.env.SUPABASE_ANON_KEY?.trim() ||
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ||
+    process.env.VITE_SUPABASE_ANON_KEY?.trim() ||
     '';
   return value || null;
 }
@@ -120,7 +123,7 @@ export function getSupabaseAuthClient(): SupabaseClient {
   const status = getSupabaseConfigStatus();
   if (!status.configured) {
     throw new Error(
-      `Supabase is not configured yet. Add ${status.missingKeys.join(' and ')} in AI Studio Secrets.`
+      `Supabase is not configured yet. Add ${status.missingKeys.join(' and ')} in your Environment Variables (Vercel or AI Studio Secrets).`
     );
   }
 
@@ -173,7 +176,7 @@ export function getSupabaseAdmin(): SupabaseClient {
   const status = getSupabaseConfigStatus();
   if (!status.configured) {
     throw new Error(
-      `Supabase is not configured yet. Add ${status.missingKeys.join(' and ')} in AI Studio Secrets.`
+      `Supabase is not configured yet. Add ${status.missingKeys.join(' and ')} in your Environment Variables (Vercel or AI Studio Secrets).`
     );
   }
 
