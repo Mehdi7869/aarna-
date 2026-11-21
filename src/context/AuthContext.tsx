@@ -16,22 +16,23 @@ const CLIENT_SUPABASE_PUBLISHABLE_KEY =
   import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim() ||
   'sb_publishable_-U6EEkrWGvhFYPpdNXILMQ_Il4cmf9l';
 
-let browserSupabaseClient: SupabaseClient | null = null;
+let directSupabaseClientInstance: SupabaseClient | null = null;
 
-function getBrowserSupabaseClient(): SupabaseClient {
-  if (!browserSupabaseClient) {
-    browserSupabaseClient = createClient(
+function getDirectSupabaseClient(): SupabaseClient {
+  if (!directSupabaseClientInstance) {
+    directSupabaseClientInstance = createClient(
       CLIENT_SUPABASE_URL,
       CLIENT_SUPABASE_PUBLISHABLE_KEY,
       {
         auth: {
           autoRefreshToken: false,
           persistSession: false,
+          detectSessionInUrl: true,
         },
       }
     );
   }
-  return browserSupabaseClient;
+  return directSupabaseClientInstance;
 }
 
 export interface AppUser {
@@ -59,8 +60,12 @@ interface AuthContextValue {
   authError: string | null;
   authNotice: string | null;
   configStatus: SupabaseSetupStatus | null;
+  isPasswordRecovery: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, fullName?: string) => Promise<void>;
+  resetPassword: (email: string) => Promise<boolean>;
+  updatePassword: (newPassword: string) => Promise<boolean>;
+  cancelPasswordRecovery: () => void;
   logout: () => Promise<void>;
   getIdToken: () => Promise<string>;
   refreshConfigStatus: () => Promise<void>;
@@ -79,11 +84,25 @@ function extractDisplayName(
     : null;
 }
 
+function hasRecoveryHashInUrl(): boolean {
+  if (typeof window === 'undefined') return false;
+  const hash = window.location.hash || '';
+  if (!hash) return false;
+  const params = new URLSearchParams(hash.replace(/^#/, ''));
+  return (
+    params.get('type') === 'recovery' ||
+    hash.toLowerCase().includes('type=recovery')
+  );
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<SessionState | null>(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const [authNotice, setAuthNotice] = useState<string | null>(null);
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState<boolean>(() =>
+    hasRecoveryHashInUrl()
+  );
   const [configStatus, setConfigStatus] = useState<SupabaseSetupStatus | null>({
     configured: true,
     missingKeys: [],
@@ -130,6 +149,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     refreshConfigStatus();
   }, [refreshConfigStatus]);
 
+  // Detect Supabase PASSWORD_RECOVERY from URL hash and onAuthStateChange
+  useEffect(() => {
+    const directSupabaseClient = getDirectSupabaseClient();
+
+    if (typeof window !== 'undefined' && hasRecoveryHashInUrl()) {
+      setIsPasswordRecovery(true);
+      const hashParams = new URLSearchParams(
+        window.location.hash.replace(/^#/, '')
+      );
+      const accessToken = hashParams.get('access_token');
+      const refreshToken = hashParams.get('refresh_token');
+      if (accessToken && refreshToken) {
+        void directSupabaseClient.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+      }
+    }
+
+    const {
+      data: { subscription },
+    } = directSupabaseClient.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsPasswordRecovery(true);
+        setAuthError(null);
+      }
+    });
+
+    const handleHashChange = () => {
+      if (hasRecoveryHashInUrl()) {
+        setIsPasswordRecovery(true);
+        setAuthError(null);
+      }
+    };
+    window.addEventListener('hashchange', handleHashChange);
+
+    return () => {
+      subscription.unsubscribe();
+      window.removeEventListener('hashchange', handleHashChange);
+    };
+  }, []);
+
   const clearMessages = useCallback(() => {
     setAuthError(null);
     setAuthNotice(null);
@@ -137,11 +198,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInDirectWithSupabase = useCallback(
     async (email: string, password: string) => {
-      const supabase = getBrowserSupabaseClient();
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      });
+      const directSupabaseClient = getDirectSupabaseClient();
+      const { data, error } = await directSupabaseClient.auth.signInWithPassword(
+        {
+          email: email.trim(),
+          password,
+        }
+      );
 
       if (error || !data.session || !data.user) {
         setAuthError(error?.message || 'Invalid email or password.');
@@ -166,9 +229,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signUpDirectWithSupabase = useCallback(
     async (email: string, password: string, fullName?: string) => {
-      const supabase = getBrowserSupabaseClient();
+      const directSupabaseClient = getDirectSupabaseClient();
       const trimmedName = fullName?.trim();
-      const { data, error } = await supabase.auth.signUp({
+      const { data, error } = await directSupabaseClient.auth.signUp({
         email: email.trim(),
         password,
         options: trimmedName
@@ -233,8 +296,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        // If the serverless route returned a direct client credential error (400/401 JSON), show it.
-        // For 404, HTML fallback, 5xx, or any other route failure, immediately fall back to direct Supabase auth.
         const isValidCredentialRejection =
           (res.status === 400 || res.status === 401) &&
           !looksLikeHtml &&
@@ -324,6 +385,104 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [signUpDirectWithSupabase]
   );
 
+  const resetPassword = useCallback(async (email: string): Promise<boolean> => {
+    setAuthError(null);
+    setAuthNotice(null);
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
+      setAuthError('Please enter your email address.');
+      return false;
+    }
+
+    try {
+      const directSupabaseClient = getDirectSupabaseClient();
+      const { error } = await directSupabaseClient.auth.resetPasswordForEmail(
+        trimmedEmail,
+        {
+          redirectTo: window.location.origin,
+        }
+      );
+
+      if (error) {
+        setAuthError(error.message || 'Unable to send password reset link.');
+        return false;
+      }
+
+      setAuthNotice(
+        `Password reset link sent to ${trimmedEmail}. Please check your inbox and open the link to set a new password.`
+      );
+      return true;
+    } catch (err) {
+      setAuthError(
+        err instanceof Error
+          ? err.message
+          : 'Unable to send password reset link. Please try again.'
+      );
+      return false;
+    }
+  }, []);
+
+  const updatePassword = useCallback(
+    async (newPassword: string): Promise<boolean> => {
+      setAuthError(null);
+      setAuthNotice(null);
+      if (newPassword.length < 6) {
+        setAuthError('New password must be at least 6 characters.');
+        return false;
+      }
+
+      try {
+        const directSupabaseClient = getDirectSupabaseClient();
+        const { error } = await directSupabaseClient.auth.updateUser({
+          password: newPassword,
+        });
+
+        if (error) {
+          setAuthError(
+            error.message ||
+              'Unable to update password. Your reset link may have expired—please request a new one.'
+          );
+          return false;
+        }
+
+        await directSupabaseClient.auth.signOut().catch(() => {});
+        if (typeof window !== 'undefined' && window.location.hash) {
+          window.history.replaceState(
+            null,
+            '',
+            `${window.location.pathname}${window.location.search}`
+          );
+        }
+        setIsPasswordRecovery(false);
+        setAuthNotice(
+          'Your password has been updated. Please sign in with your new password.'
+        );
+        return true;
+      } catch (err) {
+        setAuthError(
+          err instanceof Error
+            ? err.message
+            : 'Unable to update password. Please try again.'
+        );
+        return false;
+      }
+    },
+    []
+  );
+
+  const cancelPasswordRecovery = useCallback(() => {
+    setIsPasswordRecovery(false);
+    setAuthError(null);
+    setAuthNotice(null);
+    if (typeof window !== 'undefined' && window.location.hash) {
+      window.history.replaceState(
+        null,
+        '',
+        `${window.location.pathname}${window.location.search}`
+      );
+    }
+  }, []);
+
   const logout = useCallback(async () => {
     setAuthError(null);
     setAuthNotice(null);
@@ -370,8 +529,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Fall through to direct Supabase session refresh below
       }
 
-      const supabase = getBrowserSupabaseClient();
-      const { data, error } = await supabase.auth.refreshSession({
+      const directSupabaseClient = getDirectSupabaseClient();
+      const { data, error } = await directSupabaseClient.auth.refreshSession({
         refresh_token: current.refreshToken,
       });
       if (!error && data.session && data.user) {
@@ -408,8 +567,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         authError,
         authNotice,
         configStatus,
+        isPasswordRecovery,
         signIn,
         signUp,
+        resetPassword,
+        updatePassword,
+        cancelPasswordRecovery,
         logout,
         getIdToken,
         refreshConfigStatus,

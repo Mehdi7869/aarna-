@@ -6,6 +6,8 @@ import {
   Search,
   Database,
   RefreshCw,
+  KeyRound,
+  ArrowLeft,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.tsx';
 
@@ -13,6 +15,10 @@ export function AuthGate() {
   const {
     signIn,
     signUp,
+    resetPassword,
+    updatePassword,
+    cancelPasswordRecovery,
+    isPasswordRecovery,
     authError,
     authNotice,
     configStatus,
@@ -20,17 +26,37 @@ export function AuthGate() {
     clearMessages,
   } = useAuth();
 
-  const [mode, setMode] = useState<'login' | 'signup'>('login');
+  const [mode, setMode] = useState<'login' | 'signup' | 'forgot'>('login');
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [localError, setLocalError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLocalError(null);
     setSubmitting(true);
     try {
-      if (mode === 'login') {
+      if (isPasswordRecovery) {
+        if (newPassword !== confirmPassword) {
+          setLocalError('Passwords do not match.');
+          return;
+        }
+        const ok = await updatePassword(newPassword);
+        if (ok) {
+          setNewPassword('');
+          setConfirmPassword('');
+          setMode('login');
+        }
+        return;
+      }
+
+      if (mode === 'forgot') {
+        await resetPassword(email);
+      } else if (mode === 'login') {
         await signIn(email, password);
       } else {
         await signUp(email, password, fullName);
@@ -41,6 +67,7 @@ export function AuthGate() {
   };
 
   const isConfigured = configStatus?.configured ?? true;
+  const activeError = localError || authError;
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center px-6 py-12">
@@ -153,6 +180,166 @@ export function AuthGate() {
                 <span>Recheck Connection</span>
               </button>
             </div>
+          ) : isPasswordRecovery ? (
+            <div>
+              <div className="flex items-center gap-2 text-slate-900">
+                <KeyRound className="w-5 h-5 text-slate-700" />
+                <h2 className="text-lg font-semibold tracking-tight">
+                  Set new password
+                </h2>
+              </div>
+              <p className="mt-2 text-xs text-slate-600 leading-relaxed">
+                Enter a new password for your account below and save to complete recovery.
+              </p>
+
+              {activeError && (
+                <div
+                  role="alert"
+                  className="mt-4 p-3.5 rounded-lg border border-red-200 bg-red-50 text-xs text-red-700 leading-relaxed"
+                >
+                  {activeError}
+                </div>
+              )}
+
+              {authNotice && (
+                <div className="mt-4 p-3.5 rounded-lg border border-emerald-200 bg-emerald-50 text-xs text-emerald-800 leading-relaxed">
+                  {authNotice}
+                </div>
+              )}
+
+              <form onSubmit={handleSubmit} className="mt-5 space-y-4">
+                <div>
+                  <label
+                    htmlFor="recovery-new-password"
+                    className="block text-xs font-medium text-slate-700 mb-1"
+                  >
+                    New Password
+                  </label>
+                  <input
+                    id="recovery-new-password"
+                    type="password"
+                    required
+                    minLength={6}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    autoComplete="new-password"
+                    className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="recovery-confirm-password"
+                    className="block text-xs font-medium text-slate-700 mb-1"
+                  >
+                    Confirm New Password
+                  </label>
+                  <input
+                    id="recovery-confirm-password"
+                    type="password"
+                    required
+                    minLength={6}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    autoComplete="new-password"
+                    className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="w-full py-2.5 px-4 rounded-lg bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 transition-colors disabled:opacity-60 cursor-pointer"
+                >
+                  {submitting ? 'Saving password...' : 'Save New Password'}
+                </button>
+              </form>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setLocalError(null);
+                  setNewPassword('');
+                  setConfirmPassword('');
+                  cancelPasswordRecovery();
+                  setMode('login');
+                }}
+                className="mt-4 inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Back to Sign In</span>
+              </button>
+            </div>
+          ) : mode === 'forgot' ? (
+            <div>
+              <div className="flex items-center gap-2 text-slate-900">
+                <KeyRound className="w-5 h-5 text-slate-700" />
+                <h2 className="text-lg font-semibold tracking-tight">
+                  Reset your password
+                </h2>
+              </div>
+              <p className="mt-2 text-xs text-slate-600 leading-relaxed">
+                Enter your account email address and we will send you a secure link to reset your password.
+              </p>
+
+              {activeError && (
+                <div
+                  role="alert"
+                  className="mt-4 p-3.5 rounded-lg border border-red-200 bg-red-50 text-xs text-red-700 leading-relaxed"
+                >
+                  {activeError}
+                </div>
+              )}
+
+              {authNotice && (
+                <div className="mt-4 p-3.5 rounded-lg border border-emerald-200 bg-emerald-50 text-xs text-emerald-800 leading-relaxed">
+                  {authNotice}
+                </div>
+              )}
+
+              <form onSubmit={handleSubmit} className="mt-5 space-y-4">
+                <div>
+                  <label
+                    htmlFor="forgot-email"
+                    className="block text-xs font-medium text-slate-700 mb-1"
+                  >
+                    Email Address
+                  </label>
+                  <input
+                    id="forgot-email"
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    autoComplete="email"
+                    className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="w-full py-2.5 px-4 rounded-lg bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 transition-colors disabled:opacity-60 cursor-pointer"
+                >
+                  {submitting
+                    ? 'Sending reset link...'
+                    : 'Send Password Reset Link'}
+                </button>
+              </form>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setLocalError(null);
+                  clearMessages();
+                  setMode('login');
+                }}
+                className="mt-4 inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Back to Sign In</span>
+              </button>
+            </div>
           ) : (
             <div>
               <div className="flex items-center justify-between gap-4">
@@ -168,6 +355,7 @@ export function AuthGate() {
                 <button
                   type="button"
                   onClick={() => {
+                    setLocalError(null);
                     setMode('login');
                     clearMessages();
                   }}
@@ -182,6 +370,7 @@ export function AuthGate() {
                 <button
                   type="button"
                   onClick={() => {
+                    setLocalError(null);
                     setMode('signup');
                     clearMessages();
                   }}
@@ -195,12 +384,12 @@ export function AuthGate() {
                 </button>
               </div>
 
-              {authError && (
+              {activeError && (
                 <div
                   role="alert"
                   className="mt-4 p-3.5 rounded-lg border border-red-200 bg-red-50 text-xs text-red-700 leading-relaxed"
                 >
-                  {authError}
+                  {activeError}
                 </div>
               )}
 
@@ -249,12 +438,27 @@ export function AuthGate() {
                 </div>
 
                 <div>
-                  <label
-                    htmlFor="auth-password"
-                    className="block text-xs font-medium text-slate-700 mb-1"
-                  >
-                    Password
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label
+                      htmlFor="auth-password"
+                      className="block text-xs font-medium text-slate-700"
+                    >
+                      Password
+                    </label>
+                    {mode === 'login' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLocalError(null);
+                          clearMessages();
+                          setMode('forgot');
+                        }}
+                        className="text-xs font-medium text-slate-600 hover:text-slate-900 underline underline-offset-2 transition-colors cursor-pointer"
+                      >
+                        Forgot password?
+                      </button>
+                    )}
+                  </div>
                   <input
                     id="auth-password"
                     type="password"
