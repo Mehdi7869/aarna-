@@ -1,0 +1,6 @@
+{
+  "name": "Meridian Ledger",
+  "description": "Loan management, client repayment tracking, incoming funding ledger, and dynamic Excel workbook synchronization.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
